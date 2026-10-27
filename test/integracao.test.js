@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import request from 'supertest'
+import { consultarCep } from '../src/utils/consultarCep.js'
+import app from '../src/app.js'
+
+import { ClienteFactory } from './factories/ClienteFactory.js'
+import { MontadoraFactory } from './factories/MontadoraFactory.js'
+import { VeiculoFactory } from './factories/VeiculoFactory.js'
+
 
 vi.mock('../src/configs/Database.js', () => ({
     connection: {
@@ -67,12 +74,7 @@ vi.mock('./factories/VeiculoFactory.js', () => ({
     }
 }))
 
-import { consultarCep } from '../src/utils/consultarCep.js'
-import app from '../src/app.js'
 
-import { ClienteFactory } from './factories/ClienteFactory.js'
-import { MontadoraFactory } from './factories/MontadoraFactory.js'
-import { VeiculoFactory } from './factories/VeiculoFactory.js'
 
 
 // ---------------------------- MONTADORAS
@@ -401,14 +403,20 @@ describe('API de carros', () => {
 })
 
 // ---------------------------- CTs RESTANTES
-describe('Outros CT', () => {
+describe('Outros CTs importantes', () => {
 
     // CT-014
-    it('deve restringir o acesso ao módulo de usuários', async () => {
-        const response = await request(app)
-            .get('/usuarios')
+    it('deve retornar erro ao tentar listar veículos se houver falha no banco de dados', async () => {
+        const Database = await import('../src/configs/Database.js')
+        
+        // Forçar o banco de dados a lançar um erro temporariamente
+        vi.mocked(Database.connection.execute).mockRejectedValueOnce(new Error('Erro de conexão'))
 
-        expect([200, 401, 403, 404]).toContain(response.status)
+        const response = await request(app)
+            .get('/veiculos')
+
+        // Vai garantir que a API retorne um código de erro, seja ele maior ou igual a 400
+        expect(response.status).toBeGreaterThanOrEqual(400)
     })
 
     // CT-015
@@ -450,10 +458,67 @@ describe('Outros CT', () => {
     })
 
     // CT-019
-    it('deve permitir acessar o sistema', async () => {
+    it('deve permitir o cliente acessar o sistema', async () => {
         const response = await request(app)
             .get('/')
 
         expect(response.status).toBeLessThan(500)
+    })
+})
+
+// ---------------------------- CTs ADICIONAIS (CT-020 a CT-024)
+describe('Testes Adicionais para Validações e Tratamento de Erros', () => {
+
+    // CT-020
+    it('deve retornar erro ao tentar cadastrar uma montadora com campos vazios', async () => {
+        const response = await request(app)
+            .post('/montadoras')
+            .send({
+                nome: '',
+                pais: ''
+            })
+
+        expect(response.status).toBeGreaterThanOrEqual(400)
+    })
+
+    // CT-021
+    it('deve retornar erro ao consultar um cliente com ID inexistente', async () => {
+        const response = await request(app)
+            .get('/clientes/999999')
+
+        expect([404, 400]).toContain(response.status)
+    })    
+
+    // CT-022
+    it('deve retornar erro ao buscar um veículo com ID inexistente', async () => {
+        const response = await request(app)
+            .get('/veiculos/999999')
+
+        expect(response.status).not.toBe(200)
+    })
+
+    // CT-023
+    it('deve retornar status adequado se a rota não existir', async () => {
+        const response = await request(app)
+            .get('/rota-que-nao-existe-12345')
+
+        expect(response.status).toBe(404)
+    })    
+
+    // CT-024
+    it('deve retornar um cabeçalho JSON válido na listagem de veículos', async () => {
+        const response = await request(app).get('/veiculos')
+        expect(response.headers['content-type']).toMatch(/json/)
+    })
+    // CT-025
+    it('deve retornar um aviso de erro ao tentar cadastrar um veículo com campos obrigatórios ausentes', async () => {
+        const response = await request(app)
+            .post('/veiculos')
+            .send({
+                modelo: '',
+                placa: ''
+            })
+
+        expect(response.status).toBeGreaterThanOrEqual(400)
     })
 })
